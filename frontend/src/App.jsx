@@ -1,0 +1,33 @@
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+
+import './App.css';
+import Navbar from './components/navbar';
+import Auth from './components/auth';
+import UploadPage from './components/converter';
+import ChatbotPage from './components/chatbot';
+import HistoryChatbot from './components/history_chatbot';
+import Landing from './components/landing';
+
+
+function App() {
+  
+  return (
+    <Router>
+      <div>
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Landing/>} />
+          <Route path="/summarize" element={<h1>Summarize Page</h1>} />
+          <Route path="/flashcard" element={<h1>Flashcard Page</h1>} />
+          <Route path="/mindmap" element={<UploadPage />} />
+          <Route path="/qa" element={<ChatbotPage />} />
+          <Route path="/chatbot" element={<ChatbotPage />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/historychatbot" element={<HistoryChatbot />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
+
+export default App;

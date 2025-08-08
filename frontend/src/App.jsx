@@ -10,6 +10,7 @@ import Landing from './components/landing';
 import MindMap from './components/mindmap';
 import Flashcard from './components/flashcard';
 import Summarize from './components/summarize';
+import QA from './components/qa';
 
 
 function App() {
@@ -23,7 +24,7 @@ function App() {
           <Route path="/summarize" element={<Summarize />} />
           <Route path="/flashcard" element={<Flashcard />} />
           <Route path="/mindmap" element={<MindMap />} />
-          <Route path="/qa" element={<ChatbotPage />} />
+          <Route path="/qa" element={<QA/>} />
           <Route path="/chatbot" element={<ChatbotPage />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/historychatbot" element={<HistoryChatbot />} />

@@ -30,8 +30,8 @@ const Landing = () => {
     {
       name: "Chatbot 🤖",
       color: "text-yellow-600",
-      img: "/images/chatbot.gif",
-      link: "/chatbot",
+      img: "/images/bot.png", // no /public here
+       link: "/chatbot",
     },
   ];
 
@@ -46,30 +46,69 @@ const Landing = () => {
           your learning assistant!
         </p>
       </section>
+      
+{/* Feature Cards -- replace your current section with this */}
+<section className="py-14 px-6 flex flex-col items-center space-y-10">
+  {features.map((feature, idx) => {
+    const slideLeft = idx % 2 === 0; // even => image slides left, desc appears right
+    return (
+      <div
+        key={idx}
+        className="relative w-full max-w-4xl overflow-visible" /* allow desc to overflow */
+      >
+        {/* group wrapper controls hover for both image & desc */}
+        <div
+          className={`group flex items-center transition-all duration-500 ${
+            slideLeft ? 'justify-start' : 'justify-end'
+          }`}
+        >
+          {/* Image card (fixed size) */}
+          <Link
+            to={feature.link}
+            className={`flex-shrink-0 w-56 h-56 bg-white rounded-xl shadow flex items-center justify-center overflow-hidden
+                        transition-all duration-500 transform
+                        group-hover:scale-110`}
+          >
+            <img
+              src={feature.img}
+              alt={feature.name}
+              className={`w-24 h-24 object-contain transform transition-all duration-500
+                          group-hover:grayscale group-hover:blur-sm
+                          ${slideLeft ? 'group-hover:-translate-x-6' : 'group-hover:translate-x-6'}`}
+            />
+          </Link>
 
-      {/* Feature Cards */}
-      <section className="py-14 px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8 justify-items-center">
-          {features.map((feature, idx) => (
-            <Link
-              key={idx}
-              to={feature.link}
-              className="w-56 h-56 bg-white rounded-xl shadow hover:shadow-2xl flex flex-col items-center justify-center transition transform hover:-translate-y-2 hover:scale-105 p-4"
+          {/* Description (absolute, outside the card) */}
+          <div
+            className={`absolute top-0 z-20 opacity-0 pointer-events-none transition-all duration-500
+                        ${slideLeft ? 'left-full ml-6' : 'right-full mr-6'}`}
+          >
+            <div
             >
-              <img
-                src={feature.img}
-                alt={feature.name}
-                className="w-24 h-24 object-contain mb-4"
-              />
-              <span
-                className={`text-lg font-semibold ${feature.color} text-center`}
-              >
-                {feature.name}
-              </span>
-            </Link>
-          ))}
+              className={`bg-white rounded-xl shadow p-6 h-56 w-80 flex flex-col justify-center
+                          transform transition-all duration-500
+                          ${slideLeft ? 'translate-x-6 group-hover:translate-x-0' : '-translate-x-6 group-hover:-translate-x-0'}
+                          group-hover:opacity-100 group-hover:pointer-events-auto`}
+              <span className={`text-lg font-semibold ${feature.color}`}>{feature.name}</span>
+              <p className="text-gray-600 text-sm mt-2">
+                {feature.name === "Summarize" &&
+                  "Quickly condense long texts into key points."}
+                {feature.name === "Flashcard" &&
+                  "Turn your notes into interactive flashcards."}
+                {feature.name === "Mindmap" &&
+                  "Visualize concepts and their connections."}
+                {feature.name === "Q/A" &&
+                  "Ask questions and get instant answers."}
+                {feature.name === "Chatbot 🤖" &&
+                  "Chat with your AI study assistant."}
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
+    );
+  })}
+</section>
 
       {/* Quote Section */}
       <section className="bg-white py-14 px-6 border-t border-b border-gray-200 text-center">

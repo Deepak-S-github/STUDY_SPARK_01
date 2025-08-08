@@ -7,6 +7,9 @@ import UploadPage from './components/converter';
 import ChatbotPage from './components/chatbot';
 import HistoryChatbot from './components/history_chatbot';
 import Landing from './components/landing';
+import MindMap from './components/mindmap';
+import Flashcard from './components/flashcard';
+import Summarize from './components/summarize';
 
 
 function App() {
@@ -17,9 +20,9 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Landing/>} />
-          <Route path="/summarize" element={<h1>Summarize Page</h1>} />
-          <Route path="/flashcard" element={<h1>Flashcard Page</h1>} />
-          <Route path="/mindmap" element={<UploadPage />} />
+          <Route path="/summarize" element={<Summarize />} />
+          <Route path="/flashcard" element={<Flashcard />} />
+          <Route path="/mindmap" element={<MindMap />} />
           <Route path="/qa" element={<ChatbotPage />} />
           <Route path="/chatbot" element={<ChatbotPage />} />
           <Route path="/auth" element={<Auth />} />

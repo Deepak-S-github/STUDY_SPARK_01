@@ -1,10 +1,10 @@
-const express = require('express');
+ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const admin = require('firebase-admin');
 const bcrypt = require('bcrypt');
-const serviceAccount = require('./priyaa-mass-firebase-adminsdk-fbsvc-9269f82f27.json');
+const serviceAccount = require('./auth.json');
 const multer = require('multer');
 const fs = require('fs');
 const pdfParse = require('pdf-parse');
@@ -90,7 +90,7 @@ app.post('/login', async (req, res) => {
 
 // 🔁 Reusable generator function
 const generate = async (prompt, max_tokens = 300) => {
-  const response = await fetch('http://localhost:11434/api/generate', {
+  const response = await fetch('http://127.0.0.1:11434/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -314,83 +314,7 @@ app.get('/history_chatbot', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
-// const upload = multer({ dest: 'uploads/' });
 
-// app.post('/mindmap', upload.single('pdf'), async (req, res) => {
-//   try {
-//     console.log('📥 Incoming request to /mindmap');
-
-//     if (!req.file) {
-//       console.warn('⚠️ No file uploaded');
-//       return res.status(400).json({ error: 'No PDF file uploaded.' });
-//     }
-
-//     console.log(`📄 Uploaded file path: ${req.file.path}`);
-
-//     // 1. Read the uploaded file
-//     const fileBuffer = fs.readFileSync(req.file.path);
-//     console.log('📑 PDF file read into buffer');
-
-//     const data = await pdfParse(fileBuffer);
-//     console.log('📃 Extracted text from PDF');
-
-//     const text = data.text?.slice(0, 4000) || 'No text found in PDF.';
-//     console.log(`📝 Text for model (first 100 chars): ${text.slice(0, 100)}...`);
-
-//     // 2. Prompt for JSON mind map generation
-//     const prompt = `
-// Convert the following content into a valid JSON mind map in this format:
-
-// {
-//   "name": "Main Topic",
-//   "children": [
-//     { "name": "Subtopic 1" },
-//     { "name": "Subtopic 2", "children": [ { "name": "Detail A" }, { "name": "Detail B" } ] }
-//   ]
-// }
-
-// Only return valid JSON (no explanation or text). Here's the content:
-// ${text}
-//     `.trim();
-
-//     console.log('📤 Sending prompt to Ollama...');
-
-//     // 3. Call local Ollama model
-//     const llamaResponse = await axios.post('http://localhost:11434/api/generate', {
-//       model: 'mixtral', // or 'mistral'
-//       prompt,
-//       stream: false
-//     });
-
-//     console.log('📥 Response received from Ollama');
-
-//     // 4. Parse the returned JSON string
-//     const responseText = llamaResponse.data.response;
-//     console.log(`🧠 Raw response from model (first 100 chars): ${responseText.slice(0, 100)}...`);
-
-//     let parsedMap;
-//     try {
-//       parsedMap = JSON.parse(responseText);
-//       console.log('✅ Successfully parsed mind map JSON');
-//     } catch (err) {
-//       console.error('❌ JSON parse failed:', err);
-//       return res.status(500).json({ error: 'Failed to parse JSON from model output.', raw: responseText });
-//     }
-
-//     // 5. Send the mind map back
-//     console.log('📤 Sending mind map JSON to client');
-//     res.json({ map: parsedMap });
-
-//     // 6. Optional: delete uploaded PDF to clean up
-//     fs.unlink(req.file.path, () => {
-//       console.log(`🧹 Cleaned up uploaded file: ${req.file.path}`);
-//     });
-
-//   } catch (err) {
-//     console.error('❌ Mind map generation failed:', err);
-//     res.status(500).json({ error: 'Mind map generation failed.' });
-//   }
-// });
 const upload = multer({ dest: 'uploads/' });
 async function extractTextFromPDF(buffer) {
   const loadingTask = pdfjsLib.getDocument({ data: buffer });
@@ -404,6 +328,224 @@ async function extractTextFromPDF(buffer) {
     textContent += pageText + '\n';
   }
   return textContent;
+}
+app.post('/process', upload.single('file'), async (req, res) => {
+  console.log(`\n🛠️ [PROCESS] Request received: task=${req.query.task || 'summary'}`);
+
+  const file = req.file;
+  const task = req.query.task || 'summary';
+  const model = req.query.model || 'llama3'; // You can change default model here
+
+  if (!file) {
+    console.warn('⚠️ No file uploaded');
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  console.log(`📄 Uploaded file: ${file.originalname}`);
+  console.log(`   - Temp path: ${file.path}`);
+  console.log(`   - Size: ${(file.size / 1024).toFixed(2)} KB`);
+
+  const filePath = path.resolve(file.path);
+  const ext = path.extname(file.originalname).toLowerCase();
+  let textContent = '';
+
+  try {
+    // ====== Extract Text ======
+    console.log(`🔍 Extracting text from ${ext}...`);
+    if (ext === '.pdf') {
+      const buffer = fs.readFileSync(filePath);
+      const data = await pdfParse(buffer);
+      textContent = data.text;
+    } 
+    else if (ext === '.docx') {
+      const result = await mammoth.extractRawText({ path: filePath });
+      textContent = result.value;
+    } 
+    else if (ext === '.txt') {
+      textContent = fs.readFileSync(filePath, 'utf8');
+    } 
+    else if (ext === '.mp3' || ext === '.wav' || ext === '.m4a') {
+      console.log('🎙️ Transcribing audio file...');
+      const transcript = await runPythonScript('transcribe.py', [file.path]);
+      textContent = transcript.trim();
+    } 
+    else {
+      console.error('❌ Unsupported file format:', ext);
+      return res.status(400).json({ error: 'Unsupported file format' });
+    }
+
+    console.log(`✅ Extracted text length: ${textContent.length} chars`);
+
+    if (!textContent.trim()) {
+      console.warn('⚠️ No text extracted from file');
+      return res.status(400).json({ error: 'No text extracted from file' });
+    }
+
+    // ====== Build Prompt ======
+    const prompt = buildPrompt(task, textContent);
+    console.log(`📝 Prompt built (length: ${prompt.length} chars)`);
+    console.log(`   Prompt preview: ${prompt.slice(0, 200)}...`);
+
+    // ====== Call Local LLaMA / Mixtral Model ======
+    console.log(`🤖 Sending request to model: ${model}`);
+    const aiRes = await axios.post('http://127.0.0.1:11434/api/generate', {
+      model,
+      prompt,
+      stream: false
+    });
+
+    console.log('📥 Raw AI output received:');
+    console.log(aiRes.data.response.slice(0, 300) + '...');
+
+    // ====== Parse Output ======
+    let aiOutput = parseAIResponse(aiRes.data.response, task);
+    console.log(`📦 Parsed AI output for task "${task}"`);
+
+    res.json({
+      task,
+      model,
+      inputType: ext,
+      aiOutput
+    });
+
+  } catch (err) {
+    console.error('❌ Error during processing:', err);
+    res.status(500).json({ error: 'Processing failed', details: err.message });
+  } finally {
+    // Always delete the uploaded file
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`🗑️ Deleted temp file: ${filePath}`);
+    } catch {
+      console.warn('⚠️ Failed to delete temp file');
+    }
+  }
+});
+
+// =======================
+//  PROMPT GENERATOR
+// =======================
+function buildPrompt(task, inputText) {
+  switch (task) {
+    case 'summary':
+      return `
+You are an expert summarizer.
+Summarize the following content in clear, concise bullet points.
+Do not add extra commentary.
+
+Content:
+${inputText}
+      `.trim();
+
+case 'mindmap':
+  return `
+You are an expert in creating hierarchical mind maps.
+
+Output the mind map in valid Mermaid format ONLY, using the syntax:
+mindmap
+  root((Root Topic))
+    subtopic1
+      child1
+      child2
+    subtopic2
+      child3
+
+STRICT RULES:
+- Start with the word "mindmap" on the first line (no markdown, no \`\`\` fencing).
+- Indent child nodes with two spaces per hierarchy level.
+- Each node should be a short phrase (max 5 words).
+- No explanations, no commentary — only the mind map code.
+
+Topic:
+${inputText}
+  `.trim();
+
+
+    case 'flashcards':
+      return `
+You are an expert at creating educational flashcards.
+Generate exactly 10 flashcards in valid JSON format:
+[
+  { "question": "Question text here", "answer": "Answer text here" }
+]
+
+Rules:
+- Output ONLY valid JSON.
+- No markdown formatting or extra text.
+- Keep questions short and clear.
+
+Content:
+${inputText}
+      `.trim();
+
+    case 'qa':
+      return `
+You are an expert question generator.
+Generate exactly 5 Q&A pairs in valid JSON format:
+[
+  { "question": "Question text here", "answer": "Answer text here" }
+]
+
+Rules:
+- Output ONLY valid JSON.
+- No markdown formatting or extra text.
+- Keep answers short and accurate.
+
+Content:
+${inputText}
+      `.trim();
+
+    default:
+      return `
+You are an expert summarizer.
+Summarize the following content clearly and concisely.
+
+Content:
+${inputText}
+      `.trim();
+  }
+}
+
+// =======================
+//  AI OUTPUT PARSER
+// =======================
+function parseAIResponse(output, task) {
+  const cleaned = output.trim();
+
+  if (task === 'mindmap') {
+    try {
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (err) {
+      return { error: 'Invalid mindmap JSON', raw: cleaned };
+    }
+    return { error: 'No valid JSON found for mindmap', raw: cleaned };
+  }
+
+  if (task === 'flashcards' || task === 'qa') {
+    try {
+      const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    } catch {}
+    return { error: 'Invalid JSON output', raw: cleaned };
+  }
+
+  return cleaned;
+}
+
+// =======================
+//  PYTHON SCRIPT RUNNER
+// =======================
+function runPythonScript(scriptPath, args) {
+  return new Promise((resolve, reject) => {
+    const cmd = `python ${scriptPath} ${args.join(' ')}`;
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) return reject(stderr || err);
+      resolve(stdout);
+    });
+  });
 }
 
 // 📍 POST /mindmap endpoint
@@ -445,7 +587,7 @@ ${text.slice(0, 4000)}
 
     let llamaResponse;
     try {
-      llamaResponse = await axios.post('http://localhost:11434/api/generate', {
+      llamaResponse = await axios.post('http://127.0.0.1:11434/api/generate', {
         model: 'mixtral',
         prompt,
         stream: false

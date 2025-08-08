@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
- import { FaHistory } from 'react-icons/fa';
+import { FaHistory } from 'react-icons/fa';
+
 const Navbar = () => {
   const [user, setUser] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef();
   const location = useLocation();
-  const navigate = useNavigate(); // for programmatic navigation
+  const navigate = useNavigate();
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -51,7 +52,8 @@ const Navbar = () => {
 
   return (
     <>
-      <nav className="bg-white shadow-md px-6 py-3 flex justify-between items-center w-full">
+      {/* Navbar */}
+      <nav className="fixed top-0 left-0 w-full z-50 bg-white shadow-md px-6 py-3 flex justify-between items-center">
         {/* Logo */}
         <div className="text-2xl font-bold text-blue-600">
           <a href="/">Study Spark</a>
@@ -68,19 +70,16 @@ const Navbar = () => {
 
         {/* Right Side Icons */}
         <div className="flex items-center space-x-4">
-          {/* Global icon */}
           <span className="text-xl">🌐</span>
 
-          {/* 👇 Show history icon only on /chatbot route */}
+          {/* History icon on chatbot page */}
           {location.pathname === '/chatbot' && (
             <button
               onClick={() => navigate('/historychatbot')}
               title="View Chat History"
               className="text-xl hover:text-blue-600 transition"
             >
-
-              <FaHistory onClick={() => navigate('/historychatbot')} className="text-xl cursor-pointer hover:text-blue-600" title="Chat History" />
-
+              <FaHistory className="text-xl cursor-pointer hover:text-blue-600" title="Chat History" />
             </button>
           )}
 
@@ -114,9 +113,11 @@ const Navbar = () => {
           )}
         </div>
       </nav>
+
+      {/* Spacer div to push content below fixed navbar */}
+      <div className="h-20"></div>
     </>
   );
 };
 
 export default Navbar;
-// This component renders the navigation bar with links to different features and user authentication options.

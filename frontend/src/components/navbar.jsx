@@ -53,23 +53,33 @@ const Navbar = () => {
   return (
     <>
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 w-full z-50 bg-white shadow-md px-6 py-3 flex justify-between items-center">
+      <nav className="fixed top-0 left-0 w-full z-50 bg-white shadow-md px-6 py-3 flex justify-between items-center font-sans">
         {/* Logo */}
-        <div className="text-2xl font-bold text-blue-600">
-          <a href="/">Study Spark</a>
+        <div className="text-2xl font-bold text-blue-600 font-serif">
+          <a href="/" className="font-serif">
+            Study Spark
+          </a>
         </div>
 
         {/* Menu */}
-        <ul className="hidden md:flex space-x-6 text-gray-700 font-medium">
-          <li><a href="/summarize" onClick={handleProtectedRoute} className="hover:text-blue-500">Summarize</a></li>
-          <li><a href="/flashcard" onClick={handleProtectedRoute} className="hover:text-blue-500">Flashcard</a></li>
-          <li><a href="/mindmap" onClick={handleProtectedRoute} className="hover:text-blue-500">Mindmap</a></li>
-          <li><a href="/qa" onClick={handleProtectedRoute} className="hover:text-blue-500">Q/A</a></li>
-          <li><a href="/chatbot" onClick={handleProtectedRoute} className="hover:text-blue-500">Chatbot</a></li>
+        <ul className="hidden md:flex space-x-6 text-gray-700 font-medium font-sans">
+          {['summarize', 'flashcard', 'mindmap', 'qa', 'chatbot'].map((feature) => (
+            <li key={feature}>
+              <a
+                href={`/${feature}`}
+                onClick={handleProtectedRoute}
+                className="hover:text-blue-500 relative group transition-colors duration-300"
+              >
+                {/* Underline animation */}
+                <span className="absolute left-0 -bottom-1 w-0 h-[2px] bg-blue-500 transition-all group-hover:w-full"></span>
+                {feature.charAt(0).toUpperCase() + feature.slice(1)}
+              </a>
+            </li>
+          ))}
         </ul>
 
         {/* Right Side Icons */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 font-sans">
           <span className="text-xl">🌐</span>
 
           {/* History icon on chatbot page */}
@@ -93,20 +103,28 @@ const Navbar = () => {
                 {getInitials()}
               </div>
 
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-32 bg-white border rounded shadow-md z-10">
-                  <button
-                    onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
+              {/* Dropdown with fade + scale */}
+              <div
+                className={`absolute right-0 mt-2 w-32 bg-white border rounded shadow-md z-10 font-sans
+                  transform origin-top-right transition-all duration-200
+                  ${
+                    dropdownOpen
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
+                  }
+                `}
+              >
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           ) : (
             <a href="/auth">
-              <button className="border border-blue-600 text-blue-600 px-3 py-1 rounded hover:bg-blue-50">
+              <button className="border border-blue-600 text-blue-600 px-3 py-1 rounded hover:bg-blue-50 font-sans transition">
                 Get started
               </button>
             </a>

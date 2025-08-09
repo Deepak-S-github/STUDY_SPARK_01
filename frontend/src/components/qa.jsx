@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { FileText, HelpCircle, Lightbulb, Brain } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const QA = () => {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -11,10 +12,28 @@ const QA = () => {
 
   const navigate = useNavigate();
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     setUploadedFile(file);
     console.log("File uploaded:", file);
-    setAnswer("✅ Your answer will be displayed here once processed.");
+    setAnswer("⏳ Processing your file...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await axios.post(
+        "http://localhost:3001/process?task=qa",
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+
+      setAnswer(res.data.aiOutput || "⚠️ No answer returned from AI.");
+    } catch (err) {
+      console.error(err);
+      setAnswer("❌ Error processing the file. Please try again.");
+    }
   };
 
   const handleDrag = (e) => {
@@ -42,10 +61,21 @@ const QA = () => {
     }
   };
 
-  const handleTextSubmit = () => {
+  const handleTextSubmit = async () => {
     if (questionText.trim()) {
       console.log("Text submitted:", questionText);
-      setAnswer("💡 AI-generated answer based on your text will appear here.");
+      setAnswer("⏳ Processing your question...");
+      try {
+        const res = await axios.post(
+          "http://localhost:3001/process?task=qa",
+          { text: questionText },
+          { headers: { "Content-Type": "application/json" } }
+        );
+        setAnswer(res.data.aiOutput || "⚠️ No answer returned from AI.");
+      } catch (err) {
+        console.error(err);
+        setAnswer("❌ Error processing the question. Please try again.");
+      }
     }
   };
 
@@ -60,7 +90,24 @@ const QA = () => {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-2xl font-bold mb-4">Answer</h2>
-          <p className="text-gray-700">{answer}</p>
+
+          {Array.isArray(answer) ? (
+            <div className="space-y-4">
+              {answer.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 bg-gray-100 rounded-lg border border-gray-200"
+                >
+                  <p className="font-semibold text-orange-600">
+                    Q: {item.question}
+                  </p>
+                  <p className="text-gray-800">A: {item.answer}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-700 whitespace-pre-wrap">{answer}</p>
+          )}
 
           {/* Navigation buttons */}
           <div className="mt-6 flex gap-4">
@@ -100,7 +147,8 @@ const QA = () => {
             AI-Powered Q&A
           </h2>
           <p className="text-lg text-gray-700 leading-relaxed">
-            Upload your documents or type your questions directly to get instant, accurate answers powered by{" "}
+            Upload your documents or type your questions directly to get
+            instant, accurate answers powered by{" "}
             <span className="font-semibold">Study Spark AI</span>.
           </p>
         </div>
@@ -108,7 +156,9 @@ const QA = () => {
         {/* Right - Upload */}
         <motion.div
           className={`flex-1 rounded-2xl p-6 shadow-lg border-2 border-dashed ${
-            dragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 bg-white"
+            dragActive
+              ? "border-orange-500 bg-orange-50"
+              : "border-gray-300 bg-white"
           } relative`}
           onDragEnter={handleDrag}
           onDragOver={handleDrag}
@@ -130,7 +180,9 @@ const QA = () => {
           >
             {uploadedFile ? (
               <>
-                <p className="text-gray-800 font-medium">{uploadedFile.name}</p>
+                <p className="text-gray-800 font-medium">
+                  {uploadedFile.name}
+                </p>
                 <p className="text-sm text-gray-500">File ready to process</p>
               </>
             ) : (
@@ -168,18 +220,18 @@ const QA = () => {
           {
             icon: <FileText size={40} className="text-blue-500" />,
             title: "Multiple Formats",
-            desc: "Supports PDFs, Word docs, PPTs, and text input for flexible question answering."
+            desc: "Supports PDFs, Word docs, PPTs, and text input for flexible question answering.",
           },
           {
             icon: <Lightbulb size={40} className="text-yellow-500" />,
             title: "Instant Answers",
-            desc: "Get quick, AI-generated answers to save time and improve productivity."
+            desc: "Get quick, AI-generated answers to save time and improve productivity.",
           },
           {
             icon: <Brain size={40} className="text-purple-500" />,
             title: "Smart Understanding",
-            desc: "Understands context from the document to provide accurate, relevant answers."
-          }
+            desc: "Understands context from the document to provide accurate, relevant answers.",
+          },
         ].map((feature, idx) => (
           <motion.div
             key={idx}

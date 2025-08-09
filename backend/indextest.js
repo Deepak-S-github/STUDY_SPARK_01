@@ -1,15 +1,19 @@
- const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const admin = require('firebase-admin');
-const bcrypt = require('bcrypt');
-const serviceAccount = require('./auth.json');
-const multer = require('multer');
-const fs = require('fs');
-const pdfParse = require('pdf-parse');
-const axios = require('axios');
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const fetch = require("node-fetch");
+const admin = require("firebase-admin");
+const bcrypt = require("bcrypt");
+const serviceAccount = require("./auth.json");
+const multer = require("multer");
+const fs = require("fs");
+const pdfParse = require("pdf-parse");
+const axios = require("axios");
+const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+const path = require("path");
+const { exec } = require("child_process");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
 // ✅ Firebase Init
 console.log('[Firebase] Initializing...');
 admin.initializeApp({
@@ -90,7 +94,7 @@ app.post('/login', async (req, res) => {
 
 // 🔁 Reusable generator function
 const generate = async (prompt, max_tokens = 300) => {
-  const response = await fetch('http://127.0.0.1:11434/api/generate', {
+  const response = await fetch('http://localhost:11434/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -109,65 +113,72 @@ const generate = async (prompt, max_tokens = 300) => {
 
 
 // 📝 Route: Summarise Concept
-app.post('/summarise', async (req, res) => {
-  const { concept } = req.body;
-  console.log(`\n[SUMMARISE] Concept: "${concept}"`);
+// app.post('/summarise', async (req, res) => {
+//   const { concept } = req.body;
+//   console.log(`\n[SUMMARISE] Concept: "${concept}"`);
 
-  const prompt = `Summarize the concept of "${concept}" in 5-6 short sentences using simple language. Avoid unnecessary details.`;
+//   // Refined prompt for clarity, simplicity, and length control
+//   const prompt = `
+//   Explain the concept of "${concept}" in simple terms so that a school or college student can easily understand it.
+//   Use plain, everyday language and short sentences.
+//   Avoid technical jargon unless necessary — if used, explain it clearly.
+//   Keep the explanation concise and under 200 words.
+//   Do not add extra topics or unrelated information.
+//   `;
 
-  try {
-    const summary = await generate(prompt);
-    if (!summary) throw new Error('Empty summary response');
+//   try {
+//     const summary = await generate(prompt);
+//     if (!summary) throw new Error('Empty summary response');
 
-    await db.collection('teachback').add({
-      type: 'summary',
-      concept,
-      summary,
-      timestamp: new Date(),
-    });
+//     await db.collection('teachback').add({
+//       type: 'summary',
+//       concept,
+//       summary,
+//       timestamp: new Date(),
+//     });
 
-    console.log('[SUMMARISE] ✅ Summary:', summary.slice(0, 100), '...');
-    res.json({ response: summary });
-  } catch (error) {
-    console.error('❌ [SUMMARISE] Error:', error.message);
-    res.status(500).json({ response: 'Failed to get summary.' });
-  }
-});
+//     console.log('[SUMMARISE] ✅ Summary:', summary.slice(0, 100), '...');
+//     res.json({ response: summary });
+//   } catch (error) {
+//     console.error('❌ [SUMMARISE] Error:', error.message);
+//     res.status(500).json({ response: 'Failed to get summary.' });
+//   }
+// });
 
-// 🧾 Route: Generate Flashcards
-app.post('/flashcards', async (req, res) => {
-  const { concept } = req.body;
-  console.log(`\n[FLASHCARDS] Concept: "${concept}"`);
+// // 🧾 Route: Generate Flashcards
+// app.post('/flashcards', async (req, res) => {
+//   const { concept } = req.body;
+//   console.log(`\n[FLASHCARDS] Concept: "${concept}"`);
 
-  const prompt = `Create 6 flashcards about "${concept}". Each flashcard should have a "title" and a short "explanation". Return the result as a JSON array like this: [{"title": "...", "explanation": "..."}, ...]`;
+//   const prompt = `Create 6 flashcards about "${concept}". Each flashcard should have a "title" and a short "explanation". Return the result as a JSON array like this: [{"title": "...", "explanation": "..."}, ...]`;
 
-  try {
-    const flashcardRaw = await generate(prompt, 300);
-    if (!flashcardRaw) throw new Error('Empty flashcard response');
+//   try {
+//     const flashcardRaw = await generate(prompt, 300);
+//     if (!flashcardRaw) throw new Error('Empty flashcard response');
 
-    let flashcards;
-    try {
-      flashcards = JSON.parse(flashcardRaw);
-      if (!Array.isArray(flashcards)) throw new Error('Invalid flashcard format');
-    } catch (parseError) {
-      console.warn('[FLASHCARDS] ⚠ JSON parsing failed:', flashcardRaw);
-      throw new Error('Failed to parse flashcards.');
-    }
+//     let flashcards;
+//     try {
+//       flashcards = JSON.parse(flashcardRaw);
+//       if (!Array.isArray(flashcards)) throw new Error('Invalid flashcard format');
+//     } catch (parseError) {
+//       console.warn('[FLASHCARDS] ⚠ JSON parsing failed:', flashcardRaw);
+//       throw new Error('Failed to parse flashcards.');
+//     }
 
-    await db.collection('teachback').add({
-      type: 'flashcards',
-      concept,
-      flashcards,
-      timestamp: new Date(),
-    });
+//     await db.collection('teachback').add({
+//       type: 'flashcards',
+//       concept,
+//       flashcards,
+//       timestamp: new Date(),
+//     });
 
-    console.log('[FLASHCARDS] ✅ Flashcards generated:', flashcards.length);
-    res.json({ response: flashcards });
-  } catch (error) {
-    console.error('❌ [FLASHCARDS] Error:', error.message);
-    res.status(500).json({ response: 'Failed to generate flashcards.' });
-  }
-});
+//     console.log('[FLASHCARDS] ✅ Flashcards generated:', flashcards.length);
+//     res.json({ response: flashcards });
+//   } catch (error) {
+//     console.error('❌ [FLASHCARDS] Error:', error.message);
+//     res.status(500).json({ response: 'Failed to generate flashcards.' });
+//   }
+// });
 app.post('/ask', async (req, res) => {
   let { concept } = req.body;
   console.log(`\n[ASK] Raw concept received: "${concept}"`);
@@ -178,8 +189,13 @@ app.post('/ask', async (req, res) => {
 
   concept = concept.trim().toLowerCase().replace(/^about\s+|^what\s+is\s+|\?$/g, '');
   const conceptKey = concept.charAt(0).toUpperCase() + concept.slice(1);
-  const prompt = `You are a teacher. Clearly explain the concept of "${conceptKey}" in one short, beginner-friendly paragraph. Do not answer unrelated questions. Only explain the concept itself as if teaching a student. Avoid repetition or vague terms.`;
-
+   const prompt = `
+   Explain the concept of "${concept}" in simple terms so that a school or college student can easily understand it.
+   Use plain, everyday language and short sentences.
+   Avoid technical jargon unless necessary — if used, explain it clearly.
+   Keep the explanation concise and under 200 words.
+   Do not add extra topics or unrelated information.
+ `;
   try {
     const explanation = await generate(prompt, 120);
     if (!explanation) throw new Error('Empty model response');
@@ -233,31 +249,26 @@ app.post('/check', async (req, res) => {
 
   const latestExplanation = session.history[session.history.length - 1].explanation;
 
- const prompt = `
-You are a friendly and helpful AI tutor talking to a student.
+  const prompt = `
+Compare the following two answers and evaluate the student's understanding:
 
-Concept: "${conceptKey}"
-Explanation you gave earlier: "${latestExplanation}"
-Student's answer: "${userAnswer}"
+Summarised answer (AI's explanation from teach-back method): "${latestExplanation}"
+User's answer: "${userAnswer}"
 
-Respond naturally, like you're chatting with the student. Here's how:
-
-- Let them know casually if their answer is correct, partially correct, or incorrect.
-- If they missed anything, explain only that part clearly and simply.
-- Do not repeat the full explanation.
-- Do not use section headers, bolded phrases, bullet points, or emojis.
-- Do not include click options or action buttons at the end.
-- End with a friendly, casual question like "Want to try that again?" or "Would you like to go over it once more?"
-
-Keep the tone human, kind, and conversational — like a real tutor helping one-on-one.
+Instructions for your response:
+- Determine how similar the user's answer is to the summarised answer.
+- Provide a percentage score representing how closely the user's answer matches the summarised answer (0% to 100%).
+- Provide an estimated "understanding score" (0% to 100%) representing how well the student understands the concept.
+- Mention any key points the user missed or misunderstood.
+- Write the feedback in a natural, human, and conversational tone (no bullet points, no headers, no emojis).
+- Keep it short and clear.
 `.trim();
-
 
   try {
     const feedback = await generate(prompt, 200);
     if (!feedback) throw new Error('Empty feedback from model.');
 
-    // ✅ Instead of updating the latest history entry, add a NEW one:
+    // Store new entry
     session.history.push({
       explanation: latestExplanation,
       userAnswer,
@@ -388,7 +399,7 @@ app.post('/process', upload.single('file'), async (req, res) => {
 
     // ====== Call Local LLaMA / Mixtral Model ======
     console.log(`🤖 Sending request to model: ${model}`);
-    const aiRes = await axios.post('http://127.0.0.1:11434/api/generate', {
+    const aiRes = await axios.post('http://localhost:11434/api/generate', {
       model,
       prompt,
       stream: false
@@ -439,44 +450,72 @@ ${inputText}
 
 case 'mindmap':
   return `
-You are an expert in creating hierarchical mind maps.
+You are a JSON-only generator.
 
-Output the mind map in valid Mermaid format ONLY, using the syntax:
-mindmap
-  root((Root Topic))
-    subtopic1
-      child1
-      child2
-    subtopic2
-      child3
+Task:
+Extract a hierarchical mindmap from the given text.
 
-STRICT RULES:
-- Start with the word "mindmap" on the first line (no markdown, no \`\`\` fencing).
-- Indent child nodes with two spaces per hierarchy level.
-- Each node should be a short phrase (max 5 words).
-- No explanations, no commentary — only the mind map code.
+Output:
+Only one JSON object. No code fences. No explanations. No text outside JSON.
 
-Topic:
+Format:
+{
+  "title": "Root Topic",
+  "children": [
+    {
+      "title": "Subtopic 1",
+      "children": [
+        { "title": "Child 1" },
+        { "title": "Child 2" }
+      ]
+    },
+    {
+      "title": "Subtopic 2",
+      "children": [
+        { "title": "Child 3" }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Output must be **valid JSON** and nothing else.
+- "title" must be a short phrase (max 5 words).
+- Only include "children" if a node has subtopics.
+- The first node's "title" is the main topic.
+- Do not include markdown, bullet points, or commentary.
+
+Content:
 ${inputText}
   `.trim();
 
 
+
     case 'flashcards':
-      return `
-You are an expert at creating educational flashcards.
-Generate exactly 10 flashcards in valid JSON format:
+  return `
+You are an expert educator.
+Your task is to read the given content and extract the 10 most important points of the topic.
+
+Return them in valid JSON format as:
 [
-  { "question": "Question text here", "answer": "Answer text here" }
+  "Important point 1",
+  "Important point 2",
+  "Important point 3",
+  ...
 ]
 
 Rules:
-- Output ONLY valid JSON.
-- No markdown formatting or extra text.
-- Keep questions short and clear.
+- Output ONLY valid JSON. No markdown, no extra text, no explanations.
+- Exactly 10 points.
+- Each point must be concise, factual, and high-value.
+- Avoid trivial or obvious details.
+- Focus only on the most critical concepts or facts from the content.
 
 Content:
 ${inputText}
-      `.trim();
+  `.trim();
+
+
 
     case 'qa':
       return `
@@ -509,16 +548,28 @@ ${inputText}
 // =======================
 //  AI OUTPUT PARSER
 // =======================
+// =======================
+//  AI OUTPUT PARSER (UPDATED)
+// =======================
 function parseAIResponse(output, task) {
-  const cleaned = output.trim();
+  // Always trim GPT output
+  let cleaned = output.trim();
+
+  // Remove code fences if present
+  cleaned = cleaned.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
 
   if (task === 'mindmap') {
     try {
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      // Find first valid JSON object in the output
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}$/m);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed && typeof parsed === 'object' && parsed.title) {
+          return parsed; // ✅ Always return object
+        }
       }
     } catch (err) {
+      console.error('❌ Mindmap JSON parse error:', err.message);
       return { error: 'Invalid mindmap JSON', raw: cleaned };
     }
     return { error: 'No valid JSON found for mindmap', raw: cleaned };
@@ -526,12 +577,18 @@ function parseAIResponse(output, task) {
 
   if (task === 'flashcards' || task === 'qa') {
     try {
-      const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    } catch {}
+      // Find first valid JSON array
+      const jsonMatch = cleaned.match(/\[[\s\S]*\]$/m);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (err) {
+      console.error('❌ Array JSON parse error:', err.message);
+    }
     return { error: 'Invalid JSON output', raw: cleaned };
   }
 
+  // For summary or others, return cleaned string
   return cleaned;
 }
 
@@ -548,79 +605,115 @@ function runPythonScript(scriptPath, args) {
   });
 }
 
-// 📍 POST /mindmap endpoint
-app.post('/mindmap', upload.single('pdf'), async (req, res) => {
-  try {
-    console.log('📥 Incoming request to /mindmap');
+// Utility: Build a Mermaid mindmap prompt
+function buildMermaidPrompt(text) {
+  return `
+You are a Mermaid mindmap generator.
 
-    if (!req.file) {
-      console.warn('⚠️ No file uploaded');
-      return res.status(400).json({ error: 'No PDF file uploaded.' });
-    }
+Task:
+Read the provided text and create a valid Mermaid 'mindmap' diagram code.
+The diagram must represent the hierarchy and structure of the ideas in the text.
 
-    console.log(`📄 Uploaded file path: ${req.file.path}`);
+Rules:
+- Output only valid Mermaid syntax starting with 'mindmap'
+- No explanations, no Markdown, no JSON — only the Mermaid diagram.
+- Keep titles short (max 5 words each).
 
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const uint8Array = new Uint8Array(fileBuffer);
-    console.log('📑 PDF file read into buffer');
-
-    const text = await extractTextFromPDF(uint8Array);
-    console.log('📃 Extracted text from PDF');
-    console.log(`📝 Extracted Text Preview: ${text.slice(0, 100)}...`);
-
-    const prompt = `
-Convert the following content into a valid JSON mind map in this format:
-
-{
-  "name": "Main Topic",
-  "children": [
-    { "name": "Subtopic 1" },
-    { "name": "Subtopic 2", "children": [ { "name": "Detail A" }, { "name": "Detail B" } ] }
-  ]
+Text:
+${text}
+  `.trim();
 }
 
-Only return valid JSON (no explanation or text). Here's the content:
-${text.slice(0, 4000)}
-    `.trim();
+// === Mindmap API ===
+const GEMINI_API_KEY = "AIzaSyBvOKxBLIfrEQlArBIyqA1zHTGEGYrw-CA"; // <-- Put your key here
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
-    console.log('📤 Sending prompt to Ollama...');
+// ===== Helper =====
+function buildMermaidPrompt(text) {
+  return `
+You are a Mermaid mindmap generator.
 
-    let llamaResponse;
-    try {
-      llamaResponse = await axios.post('http://127.0.0.1:11434/api/generate', {
-        model: 'mixtral',
-        prompt,
-        stream: false
-      });
-    } catch (err) {
-      console.error('❌ Failed to get response from Ollama:', err);
-      return res.status(500).json({ error: 'Ollama model request failed.' });
+Task:
+Read the provided text and create a valid Mermaid 'mindmap' diagram code.
+The diagram must represent the hierarchy and structure of the ideas in the text.
+
+Rules:
+- Output only valid Mermaid syntax starting with 'mindmap'
+- No explanations, no Markdown, no JSON — only the Mermaid diagram.
+- Keep titles short (max 5 words each).
+
+Text:
+${text}
+  `.trim();
+}
+
+// ===== /mindmap =====
+app.post("/mindmap", upload.single("file"), async (req, res) => {
+  console.log("\n🛠️ [MINDMAP] Request received");
+
+  const file = req.file;
+  if (!file) {
+    console.warn("⚠️ No file uploaded");
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  console.log(`📄 Uploaded file: ${file.originalname}`);
+  console.log(`   - Temp path: ${file.path}`);
+  console.log(`   - Size: ${(file.size / 1024).toFixed(2)} KB`);
+
+  const filePath = path.resolve(file.path);
+  const ext = path.extname(file.originalname).toLowerCase();
+  let textContent = "";
+
+  try {
+    // ===== Extract text =====
+    console.log(`🔍 Extracting text from ${ext}...`);
+    if (ext === ".pdf") {
+      const buffer = fs.readFileSync(filePath);
+      const data = await pdfParse(buffer);
+      textContent = data.text;
+    } else if (ext === ".docx") {
+      const result = await mammoth.extractRawText({ path: filePath });
+      textContent = result.value;
+    } else if (ext === ".txt") {
+      textContent = fs.readFileSync(filePath, "utf8");
+    } else {
+      console.error(`❌ Unsupported file format: ${ext}`);
+      return res.status(400).json({ error: "Unsupported file format" });
     }
 
-    const responseText = llamaResponse.data.response;
-    console.log(`🧠 Raw response (first 100 chars): ${responseText.slice(0, 100)}...`);
-
-    let parsedMap;
-    try {
-      parsedMap = JSON.parse(responseText);
-      console.log('✅ Successfully parsed mind map JSON');
-    } catch (err) {
-      console.error('❌ JSON parse failed:', err);
-      return res.status(500).json({ error: 'Failed to parse JSON from model output.', raw: responseText });
+    if (!textContent.trim()) {
+      console.warn("⚠️ No text extracted from file");
+      return res.status(400).json({ error: "No text extracted from file" });
     }
 
-    res.setHeader('Content-Type', 'application/json');
-    res.json({ map: parsedMap });
+    // ===== Build prompt =====
+    console.log("📝 Building Mermaid mindmap prompt...");
+    const prompt = buildMermaidPrompt(textContent);
+
+    // ===== Call Gemini =====
+    console.log(`🤖 Sending prompt to Gemini API`);
+    const geminiRes = await geminiModel.generateContent(prompt);
+
+    const mermaidCode = geminiRes.response.text().trim();
+    console.log("📥 Mermaid code preview:");
+    console.log(mermaidCode.slice(0, 300) + "...");
+
+    res.json({
+      model: "gemini-1.5-pro",
+      mermaid: mermaidCode,
+    });
 
   } catch (err) {
-    console.error('❌ Mind map generation failed:', err);
-    res.status(500).json({ error: 'Mind map generation failed.' });
+    console.error("❌ Mindmap generation error:", err);
+    res.status(500).json({ error: "Mindmap generation failed", details: err.message });
   } finally {
-    // Clean up the uploaded file
-    if (req.file) {
-      fs.unlink(req.file.path, () => {
-        console.log(`🧹 Cleaned up file: ${req.file.path}`);
-      });
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`🗑️ Deleted temp file: ${filePath}`);
+    } catch {
+      console.warn("⚠️ Failed to delete temp file");
     }
   }
 });

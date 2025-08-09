@@ -1,31 +1,111 @@
+import React, { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { FaProjectDiagram, FaBolt, FaBrain, FaLightbulb } from "react-icons/fa";
+import mermaid from "mermaid";
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "default",
+  securityLevel: "loose",
+});
+
+// Recursively convert JSON → Mermaid mindmap syntax
+function jsonToMindmap(node, depth = 0) {
+  let output = "  ".repeat(depth) + node.title + "\n";
+  if (node.children) {
+    for (let child of node.children) {
+      output += jsonToMindmap(child, depth + 1);
+    }
+  }
+  return output;
+}
+
+function jsonToMermaid(jsonData) {
+  try {
+    if (typeof jsonData === "string") {
+      jsonData = JSON.parse(jsonData);
+    }
+    return "mindmap\n" + jsonToMindmap(jsonData);
+  } catch (err) {
+    console.error("Invalid JSON for mindmap:", err);
+    return null;
+  }
+}
 
 const Mindmap = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [mindmapData, setMindmapData] = useState(null);
+  const [mindmapCode, setMindmapCode] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [typedText, setTypedText] = useState("");
   const [generated, setGenerated] = useState(false);
+  const mermaidRef = useRef(null);
 
+  // Load from navigation state (if passed from another page)
   useEffect(() => {
     if (location.state?.mindmap) {
-      setMindmapData(location.state.mindmap);
-      setGenerated(true);
+      const code = jsonToMermaid(location.state.mindmap);
+      if (code) {
+        setMindmapCode(code);
+        setGenerated(true);
+      }
     }
   }, [location.state]);
 
+  // Render Mermaid diagram
+  useEffect(() => {
+    if (mindmapCode && mermaidRef.current) {
+      mermaidRef.current.innerHTML = "";
+      try {
+        mermaid.render("generatedDiagram", mindmapCode, (svgCode) => {
+          mermaidRef.current.innerHTML = svgCode;
+        });
+      } catch (err) {
+        mermaidRef.current.innerHTML = `<pre style="color:red;">Error rendering diagram:\n${err.message}</pre>`;
+        console.error("Mermaid render error:", err);
+      }
+    }
+  }, [mindmapCode]);
+
+  // Backend API URL (local or hosted)
+  const API_URL = "http://localhost:3001/mindmap";
+  // If hosted: const API_URL = "https://your-backend.com/process?task=mindmap";
+
+  // Handle file upload
   const handleFile = (file) => {
     setUploadedFile(file);
-    setGenerated(true);
-    console.log("File uploaded:", file);
-    // Send to backend API here
+    setGenerated(false);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    fetch(API_URL, {
+      method: "POST",
+      body: formData,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((data) => {
+        if (data.aiOutput) {
+          const code = jsonToMermaid(data.aiOutput);
+          if (code) {
+            setMindmapCode(code);
+            setGenerated(true);
+          }
+        } else {
+          throw new Error("No mindmap data returned");
+        }
+      })
+      .catch((err) => {
+        alert("Error processing file: " + err.message);
+      });
   };
 
+  // Drag-and-drop events
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -51,17 +131,39 @@ const Mindmap = () => {
     }
   };
 
+  // Generate from typed text
   const handleGenerateFromText = () => {
-    if (typedText.trim()) {
-      setGenerated(true);
-      setMindmapData(`Mindmap generated from: ${typedText}`);
-      console.log("Generated from text:", typedText);
-    }
+    if (!typedText.trim()) return;
+    setGenerated(false);
+
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: typedText }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((data) => {
+        if (data.aiOutput) {
+          const code = jsonToMermaid(data.aiOutput);
+          if (code) {
+            setMindmapCode(code);
+            setGenerated(true);
+          }
+        } else {
+          throw new Error("No mindmap data returned");
+        }
+      })
+      .catch((err) => {
+        alert("Error generating mindmap: " + err.message);
+      });
   };
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-900 px-8 py-12 overflow-hidden">
-      {/* Mindmap Display */}
+      {/* Generated Mindmap */}
       {generated && (
         <motion.div
           className="bg-white text-black rounded-xl p-6 shadow-lg mb-12 border border-gray-200"
@@ -78,16 +180,19 @@ const Mindmap = () => {
             </motion.div>
             Generated Mindmap
           </h2>
+
           <motion.div
-            className="w-full h-96 border rounded-lg flex items-center justify-center bg-gray-100"
+            ref={mermaidRef}
+            className="w-full min-h-[24rem] border rounded-lg overflow-auto bg-gray-100 p-4"
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6 }}
           >
-            <p className="text-lg font-medium">🗺 Your Mindmap Visualization Here</p>
+            {!mindmapCode && (
+              <p className="text-lg font-medium">🗺 Your Mindmap Visualization Here</p>
+            )}
           </motion.div>
 
-          {/* Action Buttons */}
           <div className="flex gap-4 mt-6">
             {[
               { label: "Summarize", color: "bg-orange-500", hover: "hover:bg-orange-600", to: "/summarize" },
@@ -108,14 +213,13 @@ const Mindmap = () => {
         </motion.div>
       )}
 
-      {/* Efficient Generation Section */}
+      {/* File & Text Input */}
       <motion.div
         className="flex flex-col md:flex-row items-center gap-12"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
       >
-        {/* Left Side */}
         <div className="flex-1">
           <motion.div
             className="text-orange-500 text-6xl mb-4"
@@ -125,16 +229,13 @@ const Mindmap = () => {
           >
             <FaProjectDiagram />
           </motion.div>
-          <h2 className="text-4xl font-bold text-orange-500 mb-4">
-            Efficient Generation
-          </h2>
+          <h2 className="text-4xl font-bold text-orange-500 mb-4">Efficient Generation</h2>
           <p className="text-lg text-gray-700 leading-relaxed">
             Visualize information effortlessly.{" "}
             <span className="text-gray-900 font-semibold">Study Spark AI</span> converts your files or text into mind maps in seconds.
           </p>
         </div>
 
-        {/* Right Side - Upload & Text Input */}
         <motion.div
           className={`flex-1 rounded-2xl p-6 shadow-lg border-2 border-dashed ${
             dragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 bg-white"
@@ -159,10 +260,7 @@ const Mindmap = () => {
               </>
             ) : (
               <>
-                <motion.div
-                  animate={{ y: [0, -5, 0] }}
-                  transition={{ repeat: Infinity, duration: 1.5 }}
-                >
+                <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1.5 }}>
                   📂
                 </motion.div>
                 <p className="text-lg">Choose a file or drag it here</p>
@@ -190,7 +288,7 @@ const Mindmap = () => {
         </motion.div>
       </motion.div>
 
-      {/* Mindmap Features Section */}
+      {/* Features */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
         {[
           {

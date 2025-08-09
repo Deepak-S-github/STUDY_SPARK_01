@@ -75,7 +75,10 @@ const TeachBackChat = () => {
       console.error("Failed to save conversation:", err);
     }
   };
-
+  const handleUnderstoodAndRestart = () => {
+    handleUnderstood();
+    handleStartOver();
+  };
   return (
     <div
       className="flex flex-col w-full h-screen font-poppi overflow-hidden"
@@ -213,17 +216,18 @@ const TeachBackChat = () => {
               Need More Practice
             </button>
             <button
-              onClick={handleUnderstood}
-              className="px-4 py-2 sm:px-5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition text-sm sm:text-base"
-            >
-              I Understood
-            </button>
-            <button
-              onClick={handleStartOver}
-              className="px-4 py-2 sm:px-5 rounded-full bg-gray-400 text-white hover:bg-gray-500 transition text-sm sm:text-base"
-            >
-              Start New Concept
-            </button>
+            onClick={handleUnderstoodAndRestart}
+            className="px-4 py-2 sm:px-5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition text-sm sm:text-base"
+          >
+            I Understood
+          </button>
+
+          <button
+            onClick={handleUnderstoodAndRestart}
+            className="px-4 py-2 sm:px-5 rounded-full bg-gray-400 text-white hover:bg-gray-500 transition text-sm sm:text-base"
+          >
+            Start New Concept
+          </button>
           </div>
         </div>
       )}

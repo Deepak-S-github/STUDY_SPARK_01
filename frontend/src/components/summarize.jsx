@@ -2,26 +2,54 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FaMagic, FaFileUpload } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar'; // ✅ Make sure the path is correct
+import Navbar from '../components/Navbar';
 
 const Summarize = () => {
   const [inputText, setInputText] = useState('');
   const [summary, setSummary] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSummarize = () => {
-    if (!inputText.trim()) {
+  // ✅ Call backend API
+  const handleSummarize = async () => {
+    if (!inputText.trim() && !selectedFile) {
       setSummary('Please enter or upload content to summarize.');
       return;
     }
 
-    const words = inputText.split(' ');
-    const summaryText =
-      words.slice(0, Math.min(20, words.length)).join(' ') +
-      (words.length > 20 ? '...' : '');
-    setSummary(summaryText);
+    try {
+      setLoading(true);
+      let formData = new FormData();
+
+      if (selectedFile) {
+        formData.append('file', selectedFile);
+      } else {
+        // Create a temporary text file for backend
+        const blob = new Blob([inputText], { type: 'text/plain' });
+        const tempFile = new File([blob], 'input.txt', { type: 'text/plain' });
+        formData.append('file', tempFile);
+      }
+
+      const res = await fetch('http://localhost:3001/process?task=summary', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.error) {
+        setSummary(`Error: ${data.error}`);
+      } else {
+        setSummary(data.aiOutput || 'No summary generated.');
+      }
+    } catch (error) {
+      setSummary(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -31,25 +59,28 @@ const Summarize = () => {
       'text/plain',
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'audio/mpeg'
+      'audio/mpeg',
+      'audio/wav',
+      'audio/mp4',
+      'audio/m4a'
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      alert('Only .txt, .pdf, .docx, .mp3 files are allowed!');
+      alert('Only .txt, .pdf, .docx, .mp3, .wav, .m4a files are allowed!');
       return;
     }
 
+    setSelectedFile(file);
     setInputText(`Uploaded file: ${file.name}`);
   };
 
   return (
     <>
-      {/* ✅ Fixed Navbar */}
+      {/* Navbar */}
       <div className="fixed top-0 left-0 w-full z-50">
         <Navbar />
       </div>
 
-      {/* ✅ Add padding to prevent content overlap */}
       <div className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-100 p-6 md:p-12 pt-40">
         <motion.div
           className="max-w-4xl mx-auto bg-white shadow-2xl rounded-2xl p-6 md:p-10"
@@ -75,8 +106,9 @@ const Summarize = () => {
             <button
               className="px-6 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition"
               onClick={handleSummarize}
+              disabled={loading}
             >
-              Summarize
+              {loading ? 'Summarizing...' : 'Summarize'}
             </button>
 
             <label className="flex items-center gap-2 cursor-pointer text-indigo-600 hover:underline">
@@ -86,7 +118,7 @@ const Summarize = () => {
                 type="file"
                 className="hidden"
                 onChange={handleFileUpload}
-                accept=".txt,.pdf,.docx,.mp3"
+                accept=".txt,.pdf,.docx,.mp3,.wav,.m4a"
               />
             </label>
           </div>
@@ -98,7 +130,7 @@ const Summarize = () => {
               animate={{ opacity: 1 }}
             >
               <h2 className="text-xl font-semibold text-indigo-700 mb-2">Summary:</h2>
-              <p className="text-gray-800">{summary}</p>
+              <p className="text-gray-800 whitespace-pre-wrap">{summary}</p>
 
               <div className="mt-4 flex flex-wrap gap-4">
                 <button
@@ -137,7 +169,7 @@ const Summarize = () => {
 
           <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
             {[
-              "Paste or upload your academic notes or documents (.txt, .pdf, .docx, .mp3).",
+              "Paste or upload your academic notes or documents (.txt, .pdf, .docx, .mp3, .wav, .m4a).",
               "Click on the 'Summarize' button to generate an AI-based summary.",
               "Access extra tools like Mindmap, Flashcard, and QA instantly from your result."
             ].map((step, index) => (

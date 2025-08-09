@@ -1,194 +1,358 @@
-import React, { useState } from "react";
-import { FaUpload } from "react-icons/fa";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
-import mammoth from "mammoth";
+import { motion } from "framer-motion";
+import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { FaClipboardList, FaSyncAlt, FaStar, FaLightbulb } from "react-icons/fa";
+import axios from "axios";
 
-// Fix for Vite + PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+const Flashcards = () => {
+  const location = useLocation();
+  const [flashcardsData, setFlashcardsData] = useState([]);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [typedText, setTypedText] = useState("");
+  const [generated, setGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [flipped, setFlipped] = useState({});
 
-const Flashcard = () => {
-  const [cards, setCards] = useState([]);
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [file, setFile] = useState(null);
+  // Parse backend output into [{ question: "...", answer: "..." }]
+  const parseFlashcards = (data) => {
+    if (!data) return [];
 
-  const handleFileSelect = (event) => {
-    setFile(event.target.files[0]);
-  };
+    let parsed = data;
 
-  const generateFlashcards = async () => {
-    if (!file) {
-      alert("Please select a file first!");
-      return;
-    }
-
-    const ext = file.name.split(".").pop().toLowerCase();
-    let text = "";
-
-    if (ext === "txt") {
-      text = await file.text();
-    } else if (ext === "pdf") {
-      const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-      let extractedText = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        extractedText += content.items.map((item) => item.str).join(" ") + "\n";
+    if (typeof data === "string") {
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        parsed = [String(data)];
       }
-      text = extractedText;
-    } else if (ext === "docx") {
-      const arrayBuffer = await file.arrayBuffer();
-      const { value } = await mammoth.extractRawText({ arrayBuffer });
-      text = value;
-    } else {
-      alert("Unsupported file type");
-      return;
     }
 
-    const sentences = text
-      .split(/(?<=[.?!])\s+/)
-      .filter((s) => s.trim().length > 10);
+    if (!Array.isArray(parsed)) {
+      parsed = [String(parsed)];
+    }
 
-    const generatedCards = sentences.map((sentence, i) => ({
-      question: `Q${i + 1}`,
-      answer: sentence.trim(),
-    }));
-
-    setCards(generatedCards);
-    setIndex(0);
-    setFlipped(false);
+    // If backend only sends text, make it Q/A identical for now
+    return parsed.map((item) => {
+      if (typeof item === "object" && item.question && item.answer) {
+        return { question: String(item.question), answer: String(item.answer) };
+      }
+      return { question: String(item), answer: "No answer provided" };
+    });
   };
 
-  const handleNext = () => {
-    if (cards.length === 0) return;
-    setFlipped(false);
-    setIndex((prev) => (prev + 1) % cards.length);
+  useEffect(() => {
+    if (location.state?.flashcards) {
+      setFlashcardsData(parseFlashcards(location.state.flashcards));
+      setGenerated(true);
+    }
+  }, [location.state]);
+
+  const handleFile = async (file) => {
+    setUploadedFile(file);
+    setError(null);
+    setLoading(true);
+    setGenerated(false);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await axios.post(
+        "http://localhost:3001/process?task=flashcards",
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      setFlashcardsData(parseFlashcards(res.data.aiOutput));
+      setGenerated(true);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to generate flashcards");
+      setFlashcardsData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files?.[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleChange = (e) => {
+    if (e.target.files?.[0]) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleGenerateFromText = async () => {
+    if (!typedText.trim()) return;
+    setError(null);
+    setLoading(true);
+    setGenerated(false);
+
+    try {
+      const formData = new FormData();
+      const blob = new Blob([typedText], { type: "text/plain" });
+      formData.append("file", blob, "input.txt");
+
+      const res = await axios.post(
+        "http://localhost:3001/process?task=flashcards",
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      setFlashcardsData(parseFlashcards(res.data.aiOutput));
+      setGenerated(true);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to generate flashcards");
+      setFlashcardsData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFlip = (index) => {
+    setFlipped((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
   return (
-    <div className="flex flex-col items-center p-6 font-sans min-h-screen bg-gradient-to-br from-orange-50 to-orange-100">
-      <h2 className="text-3xl font-bold mb-4 text-orange-700">Flashcards</h2>
+    <div className="bg-gray-50 min-h-screen text-gray-900 px-8 py-12">
+      <style>{`
+        .flip-card {
+          perspective: 1000px;
+          width: 100%;
+          height: 150px;
+        }
+        .flip-card-inner {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          text-align: center;
+          transition: transform 0.6s;
+          transform-style: preserve-3d;
+          cursor: pointer;
+        }
+        .flip-card.flipped .flip-card-inner {
+          transform: rotateY(180deg);
+        }
+        .flip-card-front, .flip-card-back {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          backface-visibility: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .flip-card-front {
+          background-color: #ffffff;
+          color: #333;
+        }
+        .flip-card-back {
+          background-color: #ff7f50;
+          color: white;
+          transform: rotateY(180deg);
+        }
+      `}</style>
 
-      {/* Instruction + Upload Section */}
-      {cards.length === 0 && (
-        <div className="mt-4 max-w-3xl text-center bg-white shadow-lg rounded-lg p-6 border border-orange-200">
-          <p className="text-orange-700 text-lg font-medium mb-2">
-            Flashcards are a fun way to learn concepts quickly.
+      {/* Loading */}
+      {loading && (
+        <motion.div
+          className="bg-white text-black rounded-xl p-6 shadow-lg mb-12 border border-gray-200 text-center"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <p className="text-orange-500 font-semibold">
+            Generating flashcards... Please wait.
           </p>
-          <p className="text-gray-600 mb-6">
-            Upload your study material and turn it into interactive Q&A cards.
-          </p>
+        </motion.div>
+      )}
 
-          {/* Steps */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div className="p-4 bg-orange-50 rounded-lg shadow-sm hover:shadow-lg transition-transform transform hover:scale-105 border border-orange-200">
-              <img
-                src="https://cdn-icons-png.flaticon.com/512/1041/1041873.png"
-                alt="Step 1"
-                className="w-12 mx-auto mb-2"
-              />
-              <h3 className="font-semibold mb-1">Step 1</h3>
-              <p className="text-sm text-gray-600">
-                Select your study file (.txt, .pdf, .docx)
-              </p>
-            </div>
+      {/* Error */}
+      {error && (
+        <motion.div
+          className="bg-red-100 text-red-700 rounded-xl p-4 mb-6 border border-red-300"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          Error: {error}
+        </motion.div>
+      )}
 
-            <div className="p-4 bg-orange-100 rounded-lg shadow-sm hover:shadow-lg transition-transform transform hover:scale-105 border border-orange-200">
-              <img
-                src="https://cdn-icons-png.flaticon.com/512/3135/3135692.png"
-                alt="Step 2"
-                className="w-12 mx-auto mb-2"
-              />
-              <h3 className="font-semibold mb-1">Step 2</h3>
-              <p className="text-sm text-gray-600">
-                Click “Generate Flashcards” to process your file.
-              </p>
-            </div>
-
-            <div className="p-4 bg-orange-200 rounded-lg shadow-sm hover:shadow-lg transition-transform transform hover:scale-105 border border-orange-300">
-              <img
-                src="https://cdn-icons-png.flaticon.com/512/1040/1040230.png"
-                alt="Step 3"
-                className="w-12 mx-auto mb-2"
-              />
-              <h3 className="font-semibold mb-1">Step 3</h3>
-              <p className="text-sm text-gray-600">
-                Flip & review the generated flashcards.
-              </p>
-            </div>
+      {/* Flashcards Output */}
+      {generated && flashcardsData.length > 0 && (
+        <motion.div
+          className="bg-white text-black rounded-xl p-6 shadow-lg mb-12 border border-gray-200"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <FaClipboardList className="text-orange-500" /> Generated Flashcards
+          </h2>
+          <div className="w-full max-h-96 overflow-y-auto border rounded-lg p-4 bg-gray-100">
+            {flashcardsData.map((card, i) => (
+              <div
+                key={i}
+                className={`flip-card mb-4 ${flipped[i] ? "flipped" : ""}`}
+                onClick={() => toggleFlip(i)}
+              >
+                <div className="flip-card-inner">
+                  <div className="flip-card-front">
+                    <p className="text-lg font-medium">{card.question}</p>
+                  </div>
+                  <div className="flip-card-back">
+                    <p className="text-lg">{card.answer}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
+        </motion.div>
+      )}
 
-          {/* File Upload */}
-          <label className="flex items-center gap-2 cursor-pointer bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition">
-            <FaUpload />
-            Choose File
-            <input
-              type="file"
-              accept=".txt,.pdf,.docx"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
+      {/* Upload & Text Input */}
+      <motion.div
+        className="flex flex-col md:flex-row items-center gap-12"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8 }}
+      >
+        {/* Info Section */}
+        <div className="flex-1">
+          <motion.div
+            className="text-orange-500 text-6xl mb-4"
+            initial={{ rotate: -10, opacity: 0 }}
+            animate={{ rotate: 0, opacity: 1 }}
+            transition={{ duration: 0.8 }}
+          >
+            <FaClipboardList />
+          </motion.div>
+          <h2 className="text-4xl font-bold text-orange-500 mb-4">
+            Efficient Flashcards Generation
+          </h2>
+          <p className="text-lg text-gray-700 leading-relaxed">
+            Convert your documents or notes into interactive flashcards instantly.{" "}
+            <span className="text-gray-900 font-semibold">Study Spark AI</span>{" "}
+            helps you boost your memory retention and study smarter.
+          </p>
+        </div>
+
+        {/* Upload Box */}
+        <motion.div
+          className={`flex-1 rounded-2xl p-6 shadow-lg border-2 border-dashed ${
+            dragActive
+              ? "border-orange-500 bg-orange-50"
+              : "border-gray-300 bg-white"
+          } relative`}
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
+          initial={{ x: 50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.8 }}
+        >
+          <input
+            type="file"
+            id="fileUpload"
+            className="hidden"
+            onChange={handleChange}
+          />
+          <label
+            htmlFor="fileUpload"
+            className="flex flex-col items-center justify-center h-32 cursor-pointer text-gray-500"
+          >
+            {uploadedFile ? (
+              <>
+                <p className="text-gray-800 font-medium">{uploadedFile.name}</p>
+                <p className="text-sm text-gray-500">File ready to process</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg">Choose a file or drag it here</p>
+                <span className="text-xs text-gray-400">
+                  Supported: pdf, doc, docx, pptx
+                </span>
+              </>
+            )}
           </label>
 
-          {/* Generate Button */}
-          <button
-            onClick={generateFlashcards}
-            className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+          <div className="my-4 text-center text-gray-400">OR</div>
+
+          <textarea
+            placeholder="Type or paste your notes here to generate flashcards..."
+            value={typedText}
+            onChange={(e) => setTypedText(e.target.value)}
+            className="w-full border rounded-lg p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 h-32"
+          ></textarea>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            className="mt-4 w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600"
+            onClick={handleGenerateFromText}
+            disabled={loading}
           >
             Generate Flashcards
-          </button>
-        </div>
-      )}
+          </motion.button>
+        </motion.div>
+      </motion.div>
 
-      {/* Flashcard Display */}
-      {cards.length > 0 && (
-        <>
-          <div
-            className="mt-6 w-80 h-48 flex items-center justify-center border rounded-lg shadow-lg bg-white text-lg font-medium text-center cursor-pointer transition-transform duration-300 hover:scale-105"
-            onClick={() => setFlipped(!flipped)}
+      {/* Features */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+        {[
+          {
+            icon: <FaSyncAlt className="text-orange-500 text-4xl" />,
+            title: "Quick Creation",
+            desc: "Create flashcards instantly from files or text with AI-powered algorithms.",
+          },
+          {
+            icon: <FaStar className="text-orange-500 text-4xl" />,
+            title: "Customizable",
+            desc: "Tailor your flashcards for any subject or learning style.",
+          },
+          {
+            icon: <FaLightbulb className="text-orange-500 text-4xl" />,
+            title: "Effective Learning",
+            desc: "Enhances memory retention and helps you review smarter.",
+          },
+        ].map((feature, i) => (
+          <motion.div
+            key={i}
+            className="bg-white rounded-xl p-6 shadow-lg border border-gray-200"
+            whileHover={{ scale: 1.05 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: i * 0.2 }}
           >
-            {flipped ? cards[index].answer : cards[index].question}
-          </div>
-
-          <button
-            onClick={handleNext}
-            className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
-          >
-            Next
-          </button>
-        </>
-      )}
-
-      {/* About Flashcards Section */}
-      <div className="max-w-5xl w-full bg-white rounded-lg shadow-lg p-8 mt-16 flex flex-col md:flex-row items-center gap-8 border border-orange-200">
-        <img
-          src="https://cdn-icons-png.flaticon.com/512/201/201565.png"
-          alt="Flashcard Illustration"
-          className="w-80 rounded-lg shadow-md transform transition-transform hover:scale-105 hover:rotate-1"
-        />
-        <div>
-          <h2 className="text-3xl font-bold text-orange-700 mb-4">Make Flashcards</h2>
-          <p className="text-gray-600 leading-relaxed mb-4">
-            Creating your own set of flashcards is simple — just upload your study material, 
-            and we’ll turn it into interactive Q&A cards. You can flip them to test yourself, 
-            and review concepts faster. Once your set is ready, study anywhere and share with friends.
-          </p>
-
-          <ul className="list-disc pl-5 text-gray-700 mb-4 space-y-2">
-            <li><strong>Quick Learning:</strong> Memorize faster using active recall.</li>
-            <li><strong>Smart Design:</strong> Easy-to-read cards with clean layout.</li>
-            <li><strong>Anytime Access:</strong> Study on desktop, tablet, or phone.</li>
-            <li><strong>Customizable:</strong> Edit questions and answers anytime.</li>
-          </ul>
-
-          <p className="text-orange-600 font-semibold">
-            📚 Start building your flashcards today and make studying fun!
-          </p>
-        </div>
+            <div className="mb-4">{feature.icon}</div>
+            <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+            <p className="text-gray-600">{feature.desc}</p>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
 };
 
-export default Flashcard;
+export default Flashcards;
